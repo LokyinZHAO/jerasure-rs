@@ -1,0 +1,7 @@
+[package]
+name = "jerasure-rs"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+jerasure-sys = "1.0.0"
