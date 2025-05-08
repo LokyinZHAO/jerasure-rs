@@ -2,6 +2,21 @@
 name = "jerasure-rs"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+description = "Rust bindings to the `jerasure` and `gf-complete` library"
+repository = "https://github.com/LokyinZHAO/jerasure-rs"
+readme = "README.md"
+categories = ["api-bindings"]
+keywords = ["jerasure", "gf-complete", "bindings"]
+authors = ["Lokyin ZHAO <lokyinzhao.work@icloud.com>"]
+exclude = [
+    ".github/*",
+    ".cz.toml",
+    ".gitignore",
+    ".pre-commit-config.yaml",
+    "Cargo.lock",
+]
+
 
 [dependencies]
 jerasure-sys = "1.0.0"
