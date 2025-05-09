@@ -1,3 +1,11 @@
+//! The `galois` module provides functionality for performing operations in Galois fields.
+//!
+//! Galois fields are finite fields commonly used in error correction codes, cryptography,
+//! and other applications requiring mathematical operations over a finite set of elements.
+//!
+//! This module is designed to interface with low-level Galois field operations, provided by
+//! library `gf-complete`.
+
 use crate::{Error, MACHINE_LONG_SIZE};
 
 /// The `GaloisField` struct represents a Galois field GF(2^w) with a specified word size `w`.
@@ -152,7 +160,7 @@ impl GaloisField {
 
     /// Multiplies the `src` slice by `multiply_by` and adds `add` to each element, storing the result in `dest`.
     ///
-    /// That is,  `dest[i] = src[i] * multiply_by + add`.
+    /// That is, `dest[i] = src[i] * multiply_by + add`.
     ///
     /// # Panics
     /// It only works for word sizes of 8, 16, or 32 bits, otherwise it will panic.
@@ -220,9 +228,11 @@ mod test {
             0x95, 0xd2,
         ];
         let mut out = [0_u8; 16];
-        gf.region_multiply(src.as_slice(), 238, 0, &mut out)
+        let src_in = src.clone();
+        gf.region_multiply(src_in.as_slice(), 238, 0, &mut out)
             .unwrap();
         assert_eq!(expect_out, out);
+        assert_eq!(src, src_in);
 
         let src = [
             0xe4, 0x6e, 0xc4, 0x84, 0xc8, 0xc1, 0x13, 0x04, 0x68, 0x76, 0x01, 0x09, 0x12, 0x7d,
@@ -233,9 +243,11 @@ mod test {
             0xc1, 0x10,
         ];
         let mut out = [0_u8; 16];
-        gf.region_multiply(src.as_slice(), 208, 80, &mut out)
+        let src_in = src.clone();
+        gf.region_multiply(src_in.as_slice(), 208, 80, &mut out)
             .unwrap();
         assert_eq!(expect_out, out);
+        assert_eq!(src, src_in);
     }
 
     #[test]
@@ -245,12 +257,18 @@ mod test {
         let src_b = [0x9a, 0x57, 0xcd, 0x56, 0xc4, 0xfa, 0x87, 0xee];
         let expect_out = [0x5e, 0xad, 0x4a, 0xb8, 0x5e, 0xad, 0x4a, 0xb8];
         let mut out = [0_u8; 8];
+        let src_a_in = src_a.clone();
+        let src_b_in = src_b.clone();
         gf.region_add(src_a.as_slice(), src_b.as_slice(), &mut out)
             .unwrap();
         assert_eq!(expect_out, out);
+        assert_eq!(src_a, src_a_in);
+        assert_eq!(src_b, src_b_in);
+
         let mut buf = src_a.clone();
         let acc = src_b.clone();
         gf.region_acc(&mut buf, &acc).unwrap();
         assert_eq!(buf, expect_out);
+        assert_eq!(acc, src_b);
     }
 }

@@ -11,6 +11,7 @@ keywords = ["jerasure", "gf-complete", "bindings"]
 authors = ["Lokyin ZHAO <lokyinzhao.work@icloud.com>"]
 exclude = [
     ".github/*",
+    "var/*",
     ".cz.toml",
     ".gitignore",
     ".pre-commit-config.yaml",

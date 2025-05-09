@@ -1,10 +1,3 @@
-/// The `galois` module provides functionality for performing operations in Galois fields.
-///
-/// Galois fields are finite fields commonly used in error correction codes, cryptography,
-/// and other applications requiring mathematical operations over a finite set of elements.
-///
-/// This module is designed to interface with low-level Galois field operations, provided by
-/// library `gf-complete`.
 pub mod galois;
 
 const MACHINE_LONG_SIZE: usize = size_of::<std::os::raw::c_long>();
