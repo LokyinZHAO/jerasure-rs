@@ -6,7 +6,7 @@
 //! This module is designed to interface with low-level Galois field operations, provided by
 //! library `gf-complete`.
 
-use crate::{Error, MACHINE_LONG_SIZE};
+use crate::{CodeWord, Error, MACHINE_LONG_SIZE};
 
 /// The `GaloisField` struct represents a Galois field GF(2^w) with a specified word size `w`.
 ///
@@ -17,42 +17,45 @@ use crate::{Error, MACHINE_LONG_SIZE};
 /// - The word size `w` must be in the range 1..=32.
 /// - All the slices passed to the methods must be multiples of machine `long` size.
 pub struct GaloisField {
-    w: u8,
+    w: CodeWord,
 }
 
 impl GaloisField {
     /// Creates a new GaloisField with the specified word size.
     /// The word size must be in range 1..=32.
-    pub fn try_from_word_size(w: u8) -> Option<Self> {
-        if w == 0 || w > 32 {
+    pub fn try_from_code_word(w: CodeWord) -> Option<Self> {
+        let w_u8 = w.to_u8();
+        if w_u8 == 0 || w_u8 > 32 {
             return None;
         }
-        unsafe { jerasure_sys::jerasure::galois_init_default_field(w as i32) };
+        unsafe { jerasure_sys::jerasure::galois_init_default_field(w_u8 as i32) };
         Some(GaloisField { w })
     }
 
     /// Returns the word size of the GaloisField.
-    pub fn get_w(&self) -> u8 {
-        self.w
+    pub fn get_w(&self) -> CodeWord {
+        CodeWord::from_u8(self.w.to_u8())
     }
 
     /// Returns the inverse of `a` in the GF(2^w).
     /// # Example
     /// ```
     /// # use jerasure_rs::galois::GaloisField;
-    /// let gf = GaloisField::try_from_word_size(8).unwrap();
+    /// # use jerasure_rs::CodeWord;
+    /// let gf = GaloisField::try_from_code_word(CodeWord::W8).unwrap();
     /// assert_eq!(gf.inverse(142), 2);
     /// ```
     /// # Note: This is not the same as `1 / a` in normal arithmetic.
     pub fn inverse(&self, a: i32) -> i32 {
-        unsafe { jerasure_sys::jerasure::galois_inverse(a, self.w as i32) }
+        unsafe { jerasure_sys::jerasure::galois_inverse(a, self.w.as_cint()) }
     }
 
     /// Returns the result of `a + b` in the GF(2^w).
     /// # Example
     /// ```
     /// # use jerasure_rs::galois::GaloisField;
-    /// let gf = GaloisField::try_from_word_size(8).unwrap();
+    /// # use jerasure_rs::CodeWord;
+    /// let gf = GaloisField::try_from_code_word(CodeWord::W8).unwrap();
     /// assert_eq!(gf.add(24, 54), 46);
     /// ```
     /// # Note: This is not the same as `a + b` in normal arithmetic.
@@ -64,24 +67,26 @@ impl GaloisField {
     /// # Example
     /// ```
     /// # use jerasure_rs::galois::GaloisField;
-    /// let gf = GaloisField::try_from_word_size(8).unwrap();
+    /// # use jerasure_rs::CodeWord;
+    /// let gf = GaloisField::try_from_code_word(CodeWord::W8).unwrap();
     /// assert_eq!(gf.multiply(24, 84), 179);
     /// ```
     /// # Note: This is not the same as `a * b` in normal arithmetic.
     pub fn multiply(&self, a: i32, b: i32) -> i32 {
-        unsafe { jerasure_sys::jerasure::galois_single_multiply(a, b, self.w as i32) }
+        unsafe { jerasure_sys::jerasure::galois_single_multiply(a, b, self.w.as_cint()) }
     }
 
     /// Returns the result of `a / b` in the GF(2^w).
     /// # Example
     /// ```
     /// # use jerasure_rs::galois::GaloisField;
-    /// let gf = GaloisField::try_from_word_size(8).unwrap();
+    /// # use jerasure_rs::CodeWord;
+    /// let gf = GaloisField::try_from_code_word(CodeWord::W8).unwrap();
     /// assert_eq!(gf.divide(23, 74), 91);
     /// ```
     /// # Note: This is not the same as `a / b` in normal arithmetic.
     pub fn divide(&self, a: i32, b: i32) -> i32 {
-        unsafe { jerasure_sys::jerasure::galois_single_divide(a, b, self.w as i32) }
+        unsafe { jerasure_sys::jerasure::galois_single_divide(a, b, self.w.as_cint()) }
     }
 
     /// Calculates the result of `a + b` in the GF(2^w) and stores it in `out`.
@@ -100,21 +105,21 @@ impl GaloisField {
         let out = out.as_mut();
         let n = a.len();
         if n != b.len() {
-            return Err(Error::InvalidRange(format!(
+            return Err(Error::InvalidArguments(format!(
                 "Input slices must be the same length: a.len({}) != b.len({})",
                 a.len(),
                 b.len()
             )));
         }
         if n != out.len() {
-            return Err(Error::InvalidRange(format!(
+            return Err(Error::InvalidArguments(format!(
                 "Output slice must be the same length as input slices: out.len({}) != a.len({})",
                 out.len(),
                 a.len()
             )));
         }
         if n % MACHINE_LONG_SIZE != 0 {
-            return Err(Error::InvalidWordSize(n));
+            return Err(Error::NotAligned(n));
         }
         out.copy_from_slice(b);
         unsafe {
@@ -139,14 +144,14 @@ impl GaloisField {
         let dest = buf.as_mut();
         let n = src.len();
         if n != dest.len() {
-            return Err(Error::InvalidRange(format!(
+            return Err(Error::InvalidArguments(format!(
                 "Output slice must be the same length as input slices: out.len({}) != a.len({})",
                 dest.len(),
                 src.len()
             )));
         }
         if n % MACHINE_LONG_SIZE != 0 {
-            return Err(Error::InvalidWordSize(n));
+            return Err(Error::NotAligned(n));
         }
         unsafe {
             jerasure_sys::jerasure::galois_region_xor(
@@ -175,20 +180,20 @@ impl GaloisField {
         let dest = dest.as_mut();
         let n = src.len();
         if n != dest.len() {
-            return Err(Error::InvalidRange(format!(
+            return Err(Error::InvalidArguments(format!(
                 "Input slices must be the same length: src.len({}) != dest.len({})",
                 src.len(),
                 dest.len()
             )));
         }
         if n % MACHINE_LONG_SIZE != 0 {
-            return Err(Error::InvalidWordSize(n));
+            return Err(Error::NotAligned(n));
         }
         let mul_fn = match self.w {
-            8 => jerasure_sys::jerasure::galois_w08_region_multiply,
-            16 => jerasure_sys::jerasure::galois_w16_region_multiply,
-            32 => jerasure_sys::jerasure::galois_w32_region_multiply,
-            _ => unimplemented!("only support w=8, 16, 32"),
+            CodeWord::W8 => jerasure_sys::jerasure::galois_w08_region_multiply,
+            CodeWord::W16 => jerasure_sys::jerasure::galois_w16_region_multiply,
+            CodeWord::W32 => jerasure_sys::jerasure::galois_w32_region_multiply,
+            CodeWord::Other(_) => unimplemented!("only support w=8, 16, 32"),
         };
         let src_ptr = src.as_ptr() as *mut ::std::os::raw::c_char;
         let dest_ptr = dest.as_mut_ptr() as *mut ::std::os::raw::c_char;
@@ -204,21 +209,21 @@ mod test {
 
     #[test]
     fn test_ctor() {
-        let gf = super::GaloisField::try_from_word_size(8);
+        let gf = super::GaloisField::try_from_code_word(crate::CodeWord::W8);
         assert!(gf.is_some());
-        let gf = super::GaloisField::try_from_word_size(16);
+        let gf = super::GaloisField::try_from_code_word(crate::CodeWord::W16);
         assert!(gf.is_some());
-        let gf = super::GaloisField::try_from_word_size(32);
+        let gf = super::GaloisField::try_from_code_word(crate::CodeWord::W32);
         assert!(gf.is_some());
-        let gf = super::GaloisField::try_from_word_size(0);
+        let gf = super::GaloisField::try_from_code_word(crate::CodeWord::Other(0));
         assert!(gf.is_none());
-        let gf = super::GaloisField::try_from_word_size(33);
+        let gf = super::GaloisField::try_from_code_word(crate::CodeWord::Other(33));
         assert!(gf.is_none());
     }
 
     #[test]
     fn test_w8_region_mult() {
-        let gf = super::GaloisField::try_from_word_size(8).unwrap();
+        let gf = super::GaloisField::try_from_code_word(crate::CodeWord::W8).unwrap();
         let src = [
             0xc4, 0xfa, 0x87, 0xee, 0x9a, 0x57, 0xcd, 0x56, 0xe2, 0xc2, 0xea, 0x11, 0xcc, 0x59,
             0x84, 0x26,
@@ -252,7 +257,7 @@ mod test {
 
     #[test]
     fn test_w8_region_xor() {
-        let gf = super::GaloisField::try_from_word_size(8).unwrap();
+        let gf = super::GaloisField::try_from_code_word(crate::CodeWord::W8).unwrap();
         let src_a = [0xc4, 0xfa, 0x87, 0xee, 0x9a, 0x57, 0xcd, 0x56];
         let src_b = [0x9a, 0x57, 0xcd, 0x56, 0xc4, 0xfa, 0x87, 0xee];
         let expect_out = [0x5e, 0xad, 0x4a, 0xb8, 0x5e, 0xad, 0x4a, 0xb8];
