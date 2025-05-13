@@ -1,3 +1,9 @@
+## 0.4.2 (2025-05-13)
+
+### ♻️ Refactorings
+
+- **erasure**: replace `MallocBox<T>` with Matrix
+
 ## 0.4.1 (2025-05-13)
 
 ### ♻️ Refactorings
