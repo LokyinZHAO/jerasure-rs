@@ -1,3 +1,13 @@
+## 0.4.1 (2025-05-13)
+
+### ♻️ Refactorings
+
+- do some chores
+
+### 💚👷 CI & Build
+
+- add bump template for cz
+
 ## 0.4.0 (2025-05-13)
 
 ### ✨ Features
