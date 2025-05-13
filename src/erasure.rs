@@ -28,8 +28,7 @@ enum TechInner {
 pub enum CodingMethod {
     #[default]
     ReedSolVand,
-    Caychy,
-    CauchyGood,
+    Cauchy,
     Liberation,
     Liber8tion,
     BlaumRoth,
@@ -104,8 +103,7 @@ impl ErasureCodeBuilder {
         }
         let mut mat = match self.coding_method {
             CodingMethod::ReedSolVand => self.reed_sol_vand_mat()?,
-            CodingMethod::Caychy => todo!(),
-            CodingMethod::CauchyGood => todo!(),
+            CodingMethod::Cauchy => self.cauchy_mat()?,
             CodingMethod::Liberation => todo!(),
             CodingMethod::Liber8tion => todo!(),
             CodingMethod::BlaumRoth => todo!(),
@@ -137,11 +135,7 @@ impl ErasureCodeBuilder {
                         )
                     }
                     .ok_or_else(|| Error::other("Failed to create bit matrix"))?;
-                    TechInner::BitMatrix(
-                        bmat,
-                        self.packet_size
-                            .ok_or_else(|| Error::invalid_arguments("packet_size is required"))?,
-                    )
+                    TechInner::BitMatrix(bmat, self.check_packet_size()?)
                 }
                 Technique::Schedule => {
                     if matches!(self.coding_method, CodingMethod::ReedSolVand) {
@@ -183,6 +177,45 @@ impl ErasureCodeBuilder {
             ))
         }
         .ok_or_else(|| Error::other("Failed to create reed solomon vandermonde matrix"))
+    }
+
+    fn cauchy_mat(&self) -> Result<MallocBox<c_int>, Error> {
+        let k = self
+            .k
+            .ok_or_else(|| Error::invalid_arguments("k is required"))?;
+        let m = self
+            .m
+            .ok_or_else(|| Error::invalid_arguments("m is required"))?;
+        let w = self.w;
+
+        unsafe {
+            MallocBox::try_from_raw(jerasure_sys::jerasure::cauchy_good_general_coding_matrix(
+                k,
+                m,
+                w.as_cint(),
+            ))
+        }
+        .ok_or_else(|| Error::other("Failed to create cauchy matrix"))
+    }
+
+    fn check_packet_size(&self) -> Result<i32, Error> {
+        if self.packet_size.is_none() {
+            return Err(Error::invalid_arguments("packet_size is required"));
+        }
+        let packet_size = self.packet_size.unwrap();
+        if packet_size <= 0 {
+            return Err(Error::invalid_arguments(
+                "packet_size must be greater than 0",
+            ));
+        }
+        if packet_size % i32::try_from(crate::MACHINE_LONG_SIZE).unwrap() != 0 {
+            return Err(Error::invalid_arguments(format!(
+                "packet_size({packet_size}) must be a multiple of the machine long size({})",
+                crate::MACHINE_LONG_SIZE as i32
+            )));
+        }
+
+        Ok(packet_size)
     }
 }
 
