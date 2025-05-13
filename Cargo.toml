@@ -21,7 +21,7 @@ exclude = [
 
 [dependencies]
 iter_tools = "0.29.0"
-jerasure-sys = "1.0.1"
+jerasure-sys = "1.0.2"
 thiserror = "2.0.12"
 
 [dev-dependencies]
