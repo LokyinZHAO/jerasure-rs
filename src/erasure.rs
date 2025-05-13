@@ -20,8 +20,8 @@ enum TechInner {
     ///
     /// # Requires
     /// - w must be in {8,16,32}
-    Matrix(MallocBox<c_int>),
-    BitMatrix(MallocBox<c_int>, i32),
+    Matrix(Matrix),
+    BitMatrix(Matrix, i32),
     Schedule(Schedule),
     /// # Requires
     /// - m must be 2
@@ -29,43 +29,43 @@ enum TechInner {
 }
 
 #[derive(Debug)]
-struct MallocBox<T> {
-    ptr: *mut T,
+struct Matrix {
+    ptr: *mut c_int,
 }
 
-impl<T> MallocBox<T> {
+impl Matrix {
     /// Make a malloc box from a pointer from `malloc`.
     ///
     /// # Safety
     /// This function is unsafe because improper use may lead to memory problems. For example,
     /// a double-free may occur if the function is called twice on the same raw pointer.
-    unsafe fn try_from_raw(ptr: *mut T) -> Option<Self> {
+    unsafe fn try_from_raw(ptr: *mut c_int) -> Option<Self> {
         if ptr.is_null() {
             return None;
         }
         Some(Self { ptr })
     }
 
-    fn as_ptr(&self) -> *mut T {
+    fn as_ptr(&self) -> *mut c_int {
         self.ptr
     }
 
-    fn as_mut_ptr(&mut self) -> *mut T {
+    fn as_mut_ptr(&mut self) -> *mut c_int {
         self.ptr
     }
 }
 
-impl<T> Drop for MallocBox<T> {
+impl Drop for Matrix {
     fn drop(&mut self) {
         unsafe {
-            libc::free(self.ptr as *mut libc::c_void);
+            jerasure_sys::jerasure::jerasure_free_matrix(self.ptr);
         }
     }
 }
 
 #[derive(Debug)]
 struct Schedule {
-    bmat: MallocBox<c_int>,
+    bmat: Matrix,
     packet_size: i32,
     inner: *mut *mut c_int,
 }
@@ -243,13 +243,13 @@ impl ErasureCodeBuilder {
 }
 
 impl ErasureCodeBuilder {
-    fn reed_sol_vand_mat(&self) -> Result<MallocBox<c_int>, Error> {
+    fn reed_sol_vand_mat(&self) -> Result<Matrix, Error> {
         let k = self.k.unwrap();
         let m = self.m.unwrap();
         let w = self.w;
 
         unsafe {
-            MallocBox::try_from_raw(jerasure_sys::jerasure::reed_sol_vandermonde_coding_matrix(
+            Matrix::try_from_raw(jerasure_sys::jerasure::reed_sol_vandermonde_coding_matrix(
                 k,
                 m,
                 w.as_cint(),
@@ -258,7 +258,7 @@ impl ErasureCodeBuilder {
         .ok_or_else(|| Error::other("Failed to create reed solomon vandermonde matrix"))
     }
 
-    fn cauchy_mat(&self) -> Result<MallocBox<c_int>, Error> {
+    fn cauchy_mat(&self) -> Result<Matrix, Error> {
         let k = self
             .k
             .ok_or_else(|| Error::invalid_arguments("k is required"))?;
@@ -268,7 +268,7 @@ impl ErasureCodeBuilder {
         let w = self.w;
 
         unsafe {
-            MallocBox::try_from_raw(jerasure_sys::jerasure::cauchy_good_general_coding_matrix(
+            Matrix::try_from_raw(jerasure_sys::jerasure::cauchy_good_general_coding_matrix(
                 k,
                 m,
                 w.as_cint(),
@@ -277,13 +277,13 @@ impl ErasureCodeBuilder {
         .ok_or_else(|| Error::other("Failed to create cauchy matrix"))
     }
 
-    fn mat_to_bitmat(&self, mut mat: MallocBox<c_int>) -> Result<MallocBox<c_int>, Error> {
+    fn mat_to_bitmat(&self, mut mat: Matrix) -> Result<Matrix, Error> {
         let k = self.k.unwrap();
         let m = self.m.unwrap();
         let w = self.w;
 
         unsafe {
-            MallocBox::try_from_raw(jerasure_sys::jerasure::jerasure_matrix_to_bitmatrix(
+            Matrix::try_from_raw(jerasure_sys::jerasure::jerasure_matrix_to_bitmatrix(
                 k,
                 m,
                 w.as_cint(),
@@ -293,7 +293,7 @@ impl ErasureCodeBuilder {
         .ok_or_else(|| Error::other("Failed to create bit matrix"))
     }
 
-    fn bmat_to_schedule(&self, mut bmat: MallocBox<c_int>) -> Result<Schedule, Error> {
+    fn bmat_to_schedule(&self, mut bmat: Matrix) -> Result<Schedule, Error> {
         let k = self.k.unwrap();
         let m = self.m.unwrap();
         let w = self.w;
@@ -317,7 +317,7 @@ impl ErasureCodeBuilder {
         }
     }
 
-    fn bmat_toschedule_cache(&self, mut bmat: MallocBox<c_int>) -> Result<ScheduleCache, Error> {
+    fn bmat_toschedule_cache(&self, mut bmat: Matrix) -> Result<ScheduleCache, Error> {
         let k = self.k.unwrap();
         let m = self.m.unwrap();
         let w = self.w;
