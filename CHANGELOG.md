@@ -1,3 +1,18 @@
+## 0.4.0 (2025-05-13)
+
+### ✨ Features
+
+- add schedule tech
+- **erasure**: add cauchy code and bitmatrix tech
+
+### 💚👷 CI & Build
+
+- add update crate workflow
+
+### 🚨 Linting
+
+- fix cargo clippy warnings
+
 ## 0.3.0 (2025-05-13)
 
 ### ✨ Features
