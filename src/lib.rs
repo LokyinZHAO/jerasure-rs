@@ -1,3 +1,4 @@
+pub mod erasure;
 pub mod galois;
 
 const MACHINE_LONG_SIZE: usize = size_of::<std::os::raw::c_long>();
@@ -43,6 +44,8 @@ impl CodeWord {
 /// The `Error` enum defines the possible errors that this crate can occur.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("Too Many Erased Blocks: {0} erased, up to {1} allowed")]
+    TooManyErased(i32, i32),
     /// InvalidArguments: The the input is invalid.
     #[error("Invalid Arguments: {0}")]
     InvalidArguments(String),
@@ -57,6 +60,10 @@ pub enum Error {
 }
 
 impl Error {
+    fn too_many_erased(erasures: i32, max_erasures: i32) -> Self {
+        Self::TooManyErased(erasures, max_erasures)
+    }
+
     fn invalid_arguments(msg: impl Into<String>) -> Self {
         Self::InvalidArguments(msg.into())
     }
