@@ -185,9 +185,7 @@ impl ErasureCodeBuilder {
         let mat = match coding_method {
             CodingMethod::ReedSolVand => self.reed_sol_vand_mat()?,
             CodingMethod::Cauchy => self.cauchy_mat()?,
-            CodingMethod::Liberation => todo!(),
-            CodingMethod::Liber8tion => todo!(),
-            CodingMethod::BlaumRoth => todo!(),
+            _ => unimplemented!("Liber8tion, BlaumRoth are not implemented yet"),
         };
 
         let tech = match tech {
@@ -541,7 +539,7 @@ impl ErasureCode {
             .try_collect();
         let erased = erased?;
         if erased.len() - 1 > self.m as usize {
-            return Err(Error::too_many_erased(erased.len() as i32 - 1, self.m));
+            return Err(Error::too_many_erasure(erased.len() as i32 - 1, self.m));
         }
         self.check_decode_buffer(data.as_mut(), code.as_mut())?;
 

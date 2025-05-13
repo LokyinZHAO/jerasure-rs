@@ -323,7 +323,7 @@ fn fail_test(k: i32, m: i32, method: CodingMethod) {
     erased_code[1] = vec![0_u8; BLK_SIZE];
     let res = ec.decode(&mut erased_data, &mut erased_code, &[0, 4, 5]);
     assert!(
-        matches!(res, Err(jerasure_rs::Error::TooManyErased(_, _))),
+        matches!(res, Err(jerasure_rs::Error::TooManyErasure(_, _))),
         "res:{:?}",
         res
     );
