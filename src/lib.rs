@@ -2,7 +2,9 @@ pub mod galois;
 
 const MACHINE_LONG_SIZE: usize = size_of::<std::os::raw::c_long>();
 
+#[derive(Debug, Clone, Copy, Default)]
 pub enum CodeWord {
+    #[default]
     W8,
     W16,
     W32,
@@ -47,11 +49,22 @@ pub enum Error {
     /// NotAligned: The input is not a multiple of the machine long size.
     #[error("Not Aligned: {0} is not multiple of {MACHINE_LONG_SIZE}")]
     NotAligned(usize),
+    /// NotSupported: The input is not supported.
+    #[error("Not Supported: {0}")]
+    NotSupported(String),
     #[error("Error: {0}")]
     Other(String),
 }
 
 impl Error {
+    fn invalid_arguments(msg: impl Into<String>) -> Self {
+        Self::InvalidArguments(msg.into())
+    }
+
+    fn not_supported(msg: impl Into<String>) -> Self {
+        Self::NotSupported(msg.into())
+    }
+
     fn other(msg: impl Into<String>) -> Self {
         Self::Other(msg.into())
     }
