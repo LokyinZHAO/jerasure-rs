@@ -1,3 +1,13 @@
+## 0.4.3 (2025-05-13)
+
+### 💚👷 CI & Build
+
+- **publish_crate**: fix invalid tag format
+
+### 📌➕⬇️➖⬆️ Dependencies
+
+- **jerasure-sys**: upgrade deps
+
 ## 0.4.2 (2025-05-13)
 
 ### ♻️ Refactorings
