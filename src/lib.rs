@@ -77,41 +77,6 @@ impl Error {
     }
 }
 
-#[derive(Debug)]
-struct MallocBox<T> {
-    ptr: *mut T,
-}
-
-impl<T> MallocBox<T> {
-    /// Make a malloc box from a pointer from `malloc`.
-    ///
-    /// # Safety
-    /// This function is unsafe because improper use may lead to memory problems. For example,
-    /// a double-free may occur if the function is called twice on the same raw pointer.
-    unsafe fn try_from_raw(ptr: *mut T) -> Option<Self> {
-        if ptr.is_null() {
-            return None;
-        }
-        Some(Self { ptr })
-    }
-
-    fn as_ptr(&self) -> *mut T {
-        self.ptr
-    }
-
-    fn as_mut_ptr(&mut self) -> *mut T {
-        self.ptr
-    }
-}
-
-impl<T> Drop for MallocBox<T> {
-    fn drop(&mut self) {
-        unsafe {
-            libc::free(self.ptr as *mut libc::c_void);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use jerasure_sys;

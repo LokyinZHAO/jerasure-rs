@@ -1,7 +1,7 @@
 use ::std::os::raw::c_int;
 use std::num::NonZeroI32;
 
-use crate::{CodeWord, Error, MallocBox};
+use crate::{CodeWord, Error};
 
 use iter_tools::Itertools;
 
@@ -11,6 +11,7 @@ pub enum Technique {
     Matrix,
     BitMatrix,
     Schedule,
+    ScheduleCache,
 }
 
 #[derive(Debug)]
@@ -21,12 +22,82 @@ enum TechInner {
     /// - w must be in {8,16,32}
     Matrix(MallocBox<c_int>),
     BitMatrix(MallocBox<c_int>, i32),
-    Schedule,
+    Schedule(Schedule),
+    /// # Requires
+    /// - m must be 2
+    ScheduleCache(ScheduleCache),
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug)]
+struct MallocBox<T> {
+    ptr: *mut T,
+}
+
+impl<T> MallocBox<T> {
+    /// Make a malloc box from a pointer from `malloc`.
+    ///
+    /// # Safety
+    /// This function is unsafe because improper use may lead to memory problems. For example,
+    /// a double-free may occur if the function is called twice on the same raw pointer.
+    unsafe fn try_from_raw(ptr: *mut T) -> Option<Self> {
+        if ptr.is_null() {
+            return None;
+        }
+        Some(Self { ptr })
+    }
+
+    fn as_ptr(&self) -> *mut T {
+        self.ptr
+    }
+
+    fn as_mut_ptr(&mut self) -> *mut T {
+        self.ptr
+    }
+}
+
+impl<T> Drop for MallocBox<T> {
+    fn drop(&mut self) {
+        unsafe {
+            libc::free(self.ptr as *mut libc::c_void);
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Schedule {
+    bmat: MallocBox<c_int>,
+    packet_size: i32,
+    inner: *mut *mut c_int,
+}
+
+impl Drop for Schedule {
+    fn drop(&mut self) {
+        unsafe {
+            jerasure_sys::jerasure::jerasure_free_schedule(self.inner);
+        }
+    }
+}
+
+#[derive(Debug)]
+struct ScheduleCache {
+    packet_size: i32,
+    k: i32,
+    m: i32,
+    schedule: *mut *mut c_int,
+    cache: *mut *mut *mut c_int,
+}
+
+impl Drop for ScheduleCache {
+    fn drop(&mut self) {
+        unsafe {
+            jerasure_sys::jerasure::jerasure_free_schedule(self.schedule);
+            jerasure_sys::jerasure::jerasure_free_schedule_cache(self.k, self.m, self.cache);
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 pub enum CodingMethod {
-    #[default]
     ReedSolVand,
     Cauchy,
     Liberation,
@@ -41,7 +112,7 @@ pub struct ErasureCodeBuilder {
     w: CodeWord,
     packet_size: Option<i32>,
     tech: Option<Technique>,
-    coding_method: CodingMethod,
+    coding_method: Option<CodingMethod>,
 }
 
 impl ErasureCodeBuilder {
@@ -81,14 +152,24 @@ impl ErasureCodeBuilder {
     }
 
     pub fn coding_method(mut self, method: CodingMethod) -> Self {
-        self.coding_method = method;
+        self.coding_method = Some(method);
         self
     }
 
     pub fn build(self) -> Result<ErasureCode, Error> {
-        let k: i32 = self.k.unwrap();
-        let m: i32 = self.m.unwrap();
+        let k: i32 = self
+            .k
+            .ok_or_else(|| Error::invalid_arguments("k is required"))?;
+        let m: i32 = self
+            .m
+            .ok_or_else(|| Error::invalid_arguments("m is required"))?;
+        let tech = self
+            .tech
+            .ok_or_else(|| Error::invalid_arguments("tech is required"))?;
         let w = self.w;
+        let coding_method = self
+            .coding_method
+            .ok_or_else(|| Error::invalid_arguments("coding_method is required"))?;
         if k <= 0 {
             return Err(Error::invalid_arguments("k must be greater than 0"));
         }
@@ -101,7 +182,7 @@ impl ErasureCodeBuilder {
                 1 << w.to_u8()
             )));
         }
-        let mut mat = match self.coding_method {
+        let mat = match coding_method {
             CodingMethod::ReedSolVand => self.reed_sol_vand_mat()?,
             CodingMethod::Cauchy => self.cauchy_mat()?,
             CodingMethod::Liberation => todo!(),
@@ -109,44 +190,48 @@ impl ErasureCodeBuilder {
             CodingMethod::BlaumRoth => todo!(),
         };
 
-        let tech = match self.tech {
-            Some(tech) => match tech {
-                Technique::Matrix => {
-                    // w must be in {8,16,32}
-                    if matches!(w, CodeWord::Other(_)) {
-                        return Err(Error::not_supported("w must be in {8,16,32}"));
-                    }
-                    TechInner::Matrix(mat)
+        let tech = match tech {
+            Technique::Matrix => {
+                // w must be in {8,16,32}
+                if matches!(w, CodeWord::Other(_)) {
+                    return Err(Error::not_supported("w must be in {8,16,32}"));
                 }
-                Technique::BitMatrix => {
-                    if matches!(self.coding_method, CodingMethod::ReedSolVand) {
-                        return Err(Error::not_supported(
-                            "BitMatrix is not supported for ReedSolVand",
-                        ));
-                    }
-                    let bmat = unsafe {
-                        MallocBox::try_from_raw(
-                            jerasure_sys::jerasure::jerasure_matrix_to_bitmatrix(
-                                k,
-                                m,
-                                w.as_cint(),
-                                mat.as_mut_ptr(),
-                            ),
-                        )
-                    }
-                    .ok_or_else(|| Error::other("Failed to create bit matrix"))?;
-                    TechInner::BitMatrix(bmat, self.check_packet_size()?)
+                TechInner::Matrix(mat)
+            }
+            Technique::BitMatrix => {
+                if matches!(coding_method, CodingMethod::ReedSolVand) {
+                    return Err(Error::not_supported(
+                        "BitMatrix is not supported for ReedSolVand",
+                    ));
                 }
-                Technique::Schedule => {
-                    if matches!(self.coding_method, CodingMethod::ReedSolVand) {
-                        return Err(Error::not_supported(
-                            "Schedule is not supported for ReedSolVand",
-                        ));
-                    }
-                    TechInner::Schedule
+                let bmat = self.mat_to_bitmat(mat)?;
+                TechInner::BitMatrix(bmat, self.check_packet_size()?)
+            }
+            Technique::Schedule => {
+                if matches!(coding_method, CodingMethod::ReedSolVand) {
+                    return Err(Error::not_supported(
+                        "Schedule is not supported for ReedSolVand",
+                    ));
                 }
-            },
-            None => return Err(Error::other("tech is required")),
+                let bmat = self.mat_to_bitmat(mat)?;
+                let schedule = self.bmat_to_schedule(bmat)?;
+                TechInner::Schedule(schedule)
+            }
+            Technique::ScheduleCache => {
+                if matches!(coding_method, CodingMethod::ReedSolVand) {
+                    return Err(Error::not_supported(
+                        "ScheduleCache is not supported for ReedSolVand",
+                    ));
+                }
+                if m != 2 {
+                    return Err(Error::not_supported(
+                        "ScheduleCache is only supported for m = 2",
+                    ));
+                }
+                let bmat = self.mat_to_bitmat(mat)?;
+                let schedule = self.bmat_toschedule_cache(bmat)?;
+                TechInner::ScheduleCache(schedule)
+            }
         };
 
         Ok(ErasureCode {
@@ -154,19 +239,15 @@ impl ErasureCodeBuilder {
             k,
             m,
             w,
-            method: self.coding_method,
+            method: coding_method,
         })
     }
 }
 
 impl ErasureCodeBuilder {
     fn reed_sol_vand_mat(&self) -> Result<MallocBox<c_int>, Error> {
-        let k = self
-            .k
-            .ok_or_else(|| Error::invalid_arguments("k is required"))?;
-        let m = self
-            .m
-            .ok_or_else(|| Error::invalid_arguments("m is required"))?;
+        let k = self.k.unwrap();
+        let m = self.m.unwrap();
         let w = self.w;
 
         unsafe {
@@ -196,6 +277,84 @@ impl ErasureCodeBuilder {
             ))
         }
         .ok_or_else(|| Error::other("Failed to create cauchy matrix"))
+    }
+
+    fn mat_to_bitmat(&self, mut mat: MallocBox<c_int>) -> Result<MallocBox<c_int>, Error> {
+        let k = self.k.unwrap();
+        let m = self.m.unwrap();
+        let w = self.w;
+
+        unsafe {
+            MallocBox::try_from_raw(jerasure_sys::jerasure::jerasure_matrix_to_bitmatrix(
+                k,
+                m,
+                w.as_cint(),
+                mat.as_mut_ptr(),
+            ))
+        }
+        .ok_or_else(|| Error::other("Failed to create bit matrix"))
+    }
+
+    fn bmat_to_schedule(&self, mut bmat: MallocBox<c_int>) -> Result<Schedule, Error> {
+        let k = self.k.unwrap();
+        let m = self.m.unwrap();
+        let w = self.w;
+
+        let p = unsafe {
+            jerasure_sys::jerasure::jerasure_smart_bitmatrix_to_schedule(
+                k,
+                m,
+                w.as_cint(),
+                bmat.as_mut_ptr(),
+            )
+        };
+        if p.is_null() {
+            Err(Error::other("Failed to create schedule"))
+        } else {
+            Ok(Schedule {
+                bmat,
+                packet_size: self.check_packet_size()?,
+                inner: p,
+            })
+        }
+    }
+
+    fn bmat_toschedule_cache(&self, mut bmat: MallocBox<c_int>) -> Result<ScheduleCache, Error> {
+        let k = self.k.unwrap();
+        let m = self.m.unwrap();
+        let w = self.w;
+
+        let schedule = unsafe {
+            jerasure_sys::jerasure::jerasure_smart_bitmatrix_to_schedule(
+                k,
+                m,
+                w.as_cint(),
+                bmat.as_mut_ptr(),
+            )
+        };
+        if schedule.is_null() {
+            return Err(Error::other("Failed to create schedule"));
+        }
+        let cache = unsafe {
+            jerasure_sys::jerasure::jerasure_generate_schedule_cache(
+                k,
+                m,
+                w.as_cint(),
+                bmat.as_mut_ptr(),
+                1,
+            )
+        };
+        if cache.is_null() {
+            unsafe { jerasure_sys::jerasure::jerasure_free_schedule(schedule) };
+            return Err(Error::other("Failed to create schedule cache"));
+        }
+        Ok(ScheduleCache {
+            packet_size: self.check_packet_size()?,
+            schedule,
+            cache,
+            k,
+            m,
+        })
     }
 
     fn check_packet_size(&self) -> Result<i32, Error> {
@@ -244,7 +403,8 @@ impl ErasureCode {
         match &self.tech {
             TechInner::Matrix(_) => Technique::Matrix,
             TechInner::BitMatrix(_, _) => Technique::BitMatrix,
-            TechInner::Schedule => Technique::Schedule,
+            TechInner::Schedule(_) => Technique::Schedule,
+            TechInner::ScheduleCache(_) => Technique::ScheduleCache,
         }
     }
 
@@ -307,6 +467,8 @@ impl ErasureCode {
             .map(|s| s.as_mut())
             .map(|s| s.as_mut_ptr() as *mut ::std::ffi::c_char)
             .collect::<Vec<_>>();
+        let data_ptrs = src.as_ptr() as *mut *mut ::std::ffi::c_char;
+        let coding_ptrs = parity.as_ptr() as *mut *mut ::std::ffi::c_char;
         match &self.tech {
             TechInner::Matrix(mat) => unsafe {
                 jerasure_sys::jerasure::jerasure_matrix_encode(
@@ -314,8 +476,8 @@ impl ErasureCode {
                     self.m,
                     self.w.as_cint(),
                     mat.as_ptr(),
-                    src.as_ptr() as *mut *mut ::std::ffi::c_char,
-                    parity.as_ptr() as *mut *mut ::std::ffi::c_char,
+                    data_ptrs,
+                    coding_ptrs,
                     len.try_into().unwrap(),
                 );
             },
@@ -325,13 +487,36 @@ impl ErasureCode {
                     self.m,
                     self.w.as_cint(),
                     bmat.as_ptr(),
-                    src.as_ptr() as *mut *mut ::std::ffi::c_char,
-                    parity.as_ptr() as *mut *mut ::std::ffi::c_char,
+                    data_ptrs,
+                    coding_ptrs,
                     len.try_into().unwrap(),
                     *packet_size,
                 );
             },
-            TechInner::Schedule => todo!(),
+            TechInner::Schedule(schedule) => unsafe {
+                jerasure_sys::jerasure::jerasure_schedule_encode(
+                    self.k,
+                    self.m,
+                    self.w.as_cint(),
+                    schedule.inner,
+                    data_ptrs,
+                    coding_ptrs,
+                    len.try_into().unwrap(),
+                    schedule.packet_size,
+                );
+            },
+            TechInner::ScheduleCache(schedule) => unsafe {
+                jerasure_sys::jerasure::jerasure_schedule_encode(
+                    self.k,
+                    self.m,
+                    self.w.as_cint(),
+                    schedule.schedule,
+                    data_ptrs,
+                    coding_ptrs,
+                    len.try_into().unwrap(),
+                    schedule.packet_size,
+                );
+            },
         }
         Ok(())
     }
@@ -377,6 +562,9 @@ impl ErasureCode {
         let row_k_ones = matches!(self.method, CodingMethod::ReedSolVand)
             .then_some(1)
             .unwrap_or(0);
+        let erasures_ptr = erased.as_ptr() as *mut i32;
+        let data_ptrs = src.as_ptr() as *mut *mut ::std::ffi::c_char;
+        let coding_ptrs = parity.as_ptr() as *mut *mut ::std::ffi::c_char;
         match &self.tech {
             TechInner::Matrix(mat) => {
                 let ret = unsafe {
@@ -386,9 +574,9 @@ impl ErasureCode {
                         self.w.as_cint(),
                         mat.as_ptr(),
                         row_k_ones,
-                        erased.as_ptr() as *mut i32,
-                        src.as_ptr() as *mut *mut ::std::ffi::c_char,
-                        parity.as_ptr() as *mut *mut ::std::ffi::c_char,
+                        erasures_ptr,
+                        data_ptrs,
+                        coding_ptrs,
                         len.try_into().unwrap(),
                     )
                 };
@@ -404,9 +592,9 @@ impl ErasureCode {
                         self.w.as_cint(),
                         malloc_box.as_ptr(),
                         row_k_ones,
-                        erased.as_ptr() as *mut i32,
-                        src.as_ptr() as *mut *mut ::std::ffi::c_char,
-                        parity.as_ptr() as *mut *mut ::std::ffi::c_char,
+                        erasures_ptr,
+                        data_ptrs,
+                        coding_ptrs,
                         len.try_into().unwrap(),
                         *packet_size,
                     )
@@ -415,7 +603,43 @@ impl ErasureCode {
                     return Err(Error::other("Failed to decode"));
                 }
             }
-            TechInner::Schedule => todo!(),
+            TechInner::Schedule(schedule) => {
+                let ret = unsafe {
+                    jerasure_sys::jerasure::jerasure_schedule_decode_lazy(
+                        self.k,
+                        self.m,
+                        self.w.as_cint(),
+                        schedule.bmat.as_ptr(),
+                        erased.as_ptr() as *mut i32,
+                        src.as_ptr() as *mut *mut ::std::ffi::c_char,
+                        parity.as_ptr() as *mut *mut ::std::ffi::c_char,
+                        len.try_into().unwrap(),
+                        schedule.packet_size,
+                        1,
+                    )
+                };
+                if ret != 0 {
+                    return Err(Error::other("Failed to decode"));
+                }
+            }
+            TechInner::ScheduleCache(schedule) => {
+                let ret = unsafe {
+                    jerasure_sys::jerasure::jerasure_schedule_decode_cache(
+                        self.k,
+                        self.m,
+                        self.w.as_cint(),
+                        schedule.cache,
+                        erasures_ptr,
+                        data_ptrs,
+                        coding_ptrs,
+                        len.try_into().unwrap(),
+                        schedule.packet_size,
+                    )
+                };
+                if ret != 0 {
+                    return Err(Error::other("Failed to decode"));
+                }
+            }
         }
 
         Ok(())
