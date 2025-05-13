@@ -140,9 +140,7 @@ impl ErasureCodeBuilder {
                     TechInner::BitMatrix(
                         bmat,
                         self.packet_size
-                            .ok_or_else(|| Error::invalid_arguments("packet_size is required"))?
-                            .try_into()
-                            .unwrap(),
+                            .ok_or_else(|| Error::invalid_arguments("packet_size is required"))?,
                     )
                 }
                 Technique::Schedule => {
@@ -237,9 +235,9 @@ impl ErasureCode {
                     return Err(Error::NotAligned(s.len()));
                 }
                 if s.len() != parity.len() {
-                    return Err(Error::invalid_arguments(
+                    Err(Error::invalid_arguments(
                         "source and parity must be the same length",
-                    ));
+                    ))
                 } else {
                     Ok(s)
                 }
@@ -313,7 +311,7 @@ impl ErasureCode {
     ) -> Result<(), Error> {
         use iter_tools::prelude::*;
         let erased: Result<Vec<_>, Error> = erased
-            .into_iter()
+            .iter()
             .map(|&i| {
                 if 0 <= i && i < self.k + self.m {
                     Ok(i)
@@ -423,7 +421,7 @@ impl ErasureCode {
                 ));
             }
         }
-        for p in parity.as_mut() {
+        for p in parity {
             let p = p.as_mut();
             if p.len() % crate::MACHINE_LONG_SIZE != 0 {
                 return Err(Error::NotAligned(p.len()));
@@ -468,7 +466,7 @@ impl ErasureCode {
                 ));
             }
         }
-        for p in parity.as_mut() {
+        for p in parity {
             let p = p.as_mut();
             if p.len() % crate::MACHINE_LONG_SIZE != 0 {
                 return Err(Error::NotAligned(p.len()));
