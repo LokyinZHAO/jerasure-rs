@@ -1,3 +1,4 @@
 /target
 /var
 Cargo.lock
+jerasure-rs.code-workspace

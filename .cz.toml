@@ -5,3 +5,4 @@ version_scheme = "semver"
 version_provider = "cargo"
 update_changelog_on_bump = true
 major_version_zero = true
+bump_message = "🔖 bump: release $current_version → $new_version"
