@@ -1,3 +1,9 @@
+## 0.4.4 (2025-05-14)
+
+### 📝💡 Documentation
+
+- update erasure module docs
+
 ## 0.4.3 (2025-05-13)
 
 ### 💚👷 CI & Build
