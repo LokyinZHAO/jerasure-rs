@@ -1,3 +1,10 @@
+//! The `erasure` module provides an interface for encoding and decoding data using erasure codes.
+//!
+//! This module is designed to bind with the Jerasure library, which provides efficient
+//! implementations of various erasure coding techniques.
+//!
+//! For more information, see the [jerasure documentation](https://github.com/tsuraan/Jerasure/blob/414c96ef2b9934953b6facb31d803d79b1dd1405/Manual.pdf)
+
 use ::std::os::raw::c_int;
 use std::num::NonZeroI32;
 
@@ -6,22 +13,62 @@ use crate::{CodeWord, Error};
 use iter_tools::Itertools;
 
 #[derive(Debug, Clone, Copy, Default)]
+/// The `Technique` is used to represent the technique used to encode and decode the data.
+///
+/// For more information, see the [jerasure documentation](https://github.com/tsuraan/Jerasure/blob/414c96ef2b9934953b6facb31d803d79b1dd1405/Manual.pdf)
+///
+/// The Default value is `Matrix`, which is the most basic technique used in galois field.
+/// But the `BitMatrix` and `Schedule` techniques are more efficient in the most cases.
+/// And the `ScheduleCache` technique is a `Schedule` technique with a cache version,
+/// which is more efficient than the `Schedule` technique but requires more memory.
 pub enum Technique {
     #[default]
+    /// The matrix coding technique.
+    ///
+    /// # Requires
+    /// - w must be in {8,16,32}
     Matrix,
+    /// The bit-matrix coding technique.
+    ///
+    /// # Requires
+    /// - packet_size must be set
+    /// - w not greater than 32
+    /// - not supported for ReedSolVand
     BitMatrix,
+    /// The schedule coding technique.
+    ///
+    /// # Requires
+    /// - packet_size must be set
+    /// - w not greater than 32
+    /// - not supported for ReedSolVand
     Schedule,
+    /// The schedule coding technique with cache.
+    ///
+    /// # Requires
+    /// - same as `Schedule`
+    /// - m must be 2
+    /// - not supported for ReedSolVand
     ScheduleCache,
 }
 
 #[derive(Debug)]
 enum TechInner {
-    /// The matrix technique.
+    /// The matrix coding technique.
     ///
     /// # Requires
     /// - w must be in {8,16,32}
     Matrix(Matrix),
+    /// The bit-matrix coding technique.
+    ///
+    /// # Requires
+    /// - packet_size must be set
+    /// - w not greater than 32
     BitMatrix(Matrix, i32),
+    /// The schedule coding technique.
+    ///
+    /// # Requires
+    /// - packet_size must be set
+    /// - w not greater than 32
     Schedule(Schedule),
     /// # Requires
     /// - m must be 2
@@ -97,14 +144,30 @@ impl Drop for ScheduleCache {
 }
 
 #[derive(Debug, Clone, Copy)]
+/// The `CodingMethod` is used to represent the coding method used to encode and decode the data.
+///
+/// Each method has its own matrix generation algorithm.
+/// For more information, see the [jerasure documentation](https://github.com/tsuraan/Jerasure/blob/414c96ef2b9934953b6facb31d803d79b1dd1405/Manual.pdf)
 pub enum CodingMethod {
+    /// The Reed-Solomon Vandermonde coding method.
+    ///
+    /// # Requires
+    /// - w must be in {8,16,32}
+    /// - not supported for BitMatrix, Schedule, ScheduleCache
     ReedSolVand,
+    /// The Cauchy coding method.
+    ///
+    /// # Requires
+    /// - packet_size must be set to a multiple of the machine long size
     Cauchy,
     Liberation,
     Liber8tion,
     BlaumRoth,
 }
 
+/// The `ErasureCodeBuilder` is used to build the `ErasureCode` struct.
+///
+/// It is a builder pattern that allows you to set the parameters of the erasure code.
 #[derive(Debug, Default, Clone)]
 pub struct ErasureCodeBuilder {
     k: Option<i32>,
@@ -116,17 +179,26 @@ pub struct ErasureCodeBuilder {
 }
 
 impl ErasureCodeBuilder {
+    /// Create a new `ErasureCodeBuilder` instance.
+    /// With default values:
+    /// - `k` and `m` are not set
+    /// - `w` is `CodeWord::W8`
+    /// - `packet_size` is not set
+    /// - `tech` is not set
+    /// - `coding_method` is not set
     pub fn new() -> Self {
         Self {
             ..Default::default()
         }
     }
 
+    /// Set the number of data devices.
     pub fn k(mut self, k: NonZeroI32) -> Self {
         self.k = Some(k.get());
         self
     }
 
+    /// Set the number of parity devices.
     pub fn m(mut self, m: NonZeroI32) -> Self {
         self.m = Some(m.get());
         self
@@ -136,26 +208,36 @@ impl ErasureCodeBuilder {
     ///
     /// # Default
     /// - `CodeWord::W8`
+    ///
+    /// # Requires
+    /// - $k + m <= 2^w$
     pub fn w(mut self, w: CodeWord) -> Self {
         self.w = w;
         self
     }
 
+    /// Set the packet size.
+    ///
+    /// # Requires
+    /// - `packet_size` must be a multiple of the machine long size
     pub fn packet_size(mut self, packet_size: NonZeroI32) -> Self {
         self.packet_size = Some(packet_size.get());
         self
     }
 
+    /// Set the implementation technique.
     pub fn tech(mut self, tech: Technique) -> Self {
         self.tech = Some(tech);
         self
     }
 
+    /// Set the coding method.
     pub fn coding_method(mut self, method: CodingMethod) -> Self {
         self.coding_method = Some(method);
         self
     }
 
+    /// Build the `ErasureCode` struct.
     pub fn build(self) -> Result<ErasureCode, Error> {
         let k: i32 = self
             .k
@@ -376,6 +458,10 @@ impl ErasureCodeBuilder {
     }
 }
 
+/// The `ErasureCode` struct is used to encode and decode data using erasure codes.
+///
+/// It is a wrapper around the Jerasure library, which provides efficient implementations
+/// of various erasure coding techniques.
 pub struct ErasureCode {
     k: i32,
     m: i32,
@@ -385,18 +471,22 @@ pub struct ErasureCode {
 }
 
 impl ErasureCode {
+    /// Return the number of data devices.
     pub fn k(&self) -> i32 {
         self.k
     }
 
+    /// Return the number of parity devices.
     pub fn m(&self) -> i32 {
         self.m
     }
 
+    /// Return the code word size.
     pub fn w(&self) -> CodeWord {
         self.w
     }
 
+    /// Return the coding method.
     pub fn tech(&self) -> Technique {
         match &self.tech {
             TechInner::Matrix(_) => Technique::Matrix,
@@ -406,7 +496,7 @@ impl ErasureCode {
         }
     }
 
-    pub fn encode_parity<'a, T: AsRef<[u8]> + 'a, U: AsMut<[u8]> + 'a>(
+    fn _encode_parity<'a, T: AsRef<[u8]> + 'a, U: AsMut<[u8]> + 'a>(
         &self,
         source: impl AsRef<[T]>,
         mut parity: U,
@@ -446,6 +536,14 @@ impl ErasureCode {
         Ok(())
     }
 
+    /// Encode the data and generate coding parity.
+    ///
+    /// # Arguments
+    /// * `data` - The data to encode, which must be a slice of `k` buffers of the same length.
+    /// * `code` - The buffer to store the coding parity, which must be a slice of `m` buffers of the same length.
+    ///
+    /// # Requires
+    /// * All the buffers must be aligned to the machine long size, and be the same length.
     pub fn encode<'a, T: AsRef<[u8]> + 'a, U: AsMut<[u8]> + 'a>(
         &self,
         data: impl AsRef<[T]>,
@@ -519,6 +617,24 @@ impl ErasureCode {
         Ok(())
     }
 
+    /// Decode the data and recover the erased data.
+    ///
+    /// # Arguments
+    /// * `data` - The data devices, which must be a slice of `k` buffers of the same length.
+    /// * `code` - The coding devices, which must be a slice of `m` buffers of the same length.
+    /// * `erased` - The indices of the erased data devices, which must be a slice of integers.
+    ///   The `k` data devices are indexed 0..k, and the `m` coding devices are indexed k..k+m.
+    ///
+    /// # Requires
+    /// * All the buffers must be aligned to the machine long size, and be the same length.
+    /// * The erased indices must be in the range of 0..k+m.
+    /// * The number of erased indices must be less than or equal to `m`.
+    /// * The erased indices must be unique.
+    ///
+    /// # Note
+    /// The erased devices may not be recovered even if the number of erased devices is less than or equal to `m`.
+    /// This is because the coding matrix may not be full rank with large `k` and `m`.
+    /// In this case, the function will return an error.
     pub fn decode<T: AsMut<[u8]>>(
         &self,
         mut data: impl AsMut<[T]>,
@@ -528,6 +644,7 @@ impl ErasureCode {
         use iter_tools::prelude::*;
         let erased: Result<Vec<_>, Error> = erased
             .iter()
+            .dedup()
             .map(|&i| {
                 if 0 <= i && i < self.k + self.m {
                     Ok(i)
