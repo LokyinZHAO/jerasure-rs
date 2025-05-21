@@ -1,3 +1,9 @@
+## 0.4.5 (2025-05-22)
+
+### 🐛🚑️ Fixes
+
+- encode arguments have over-constrained lifetime
+
 ## 0.4.4 (2025-05-14)
 
 ### 📝💡 Documentation
