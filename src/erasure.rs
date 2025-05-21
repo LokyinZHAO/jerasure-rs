@@ -496,7 +496,7 @@ impl ErasureCode {
         }
     }
 
-    fn _encode_parity<'a, T: AsRef<[u8]> + 'a, U: AsMut<[u8]> + 'a>(
+    fn _encode_parity<T: AsRef<[u8]>, U: AsMut<[u8]>>(
         &self,
         source: impl AsRef<[T]>,
         mut parity: U,
@@ -544,7 +544,7 @@ impl ErasureCode {
     ///
     /// # Requires
     /// * All the buffers must be aligned to the machine long size, and be the same length.
-    pub fn encode<'a, T: AsRef<[u8]> + 'a, U: AsMut<[u8]> + 'a>(
+    pub fn encode<T: AsRef<[u8]>, U: AsMut<[u8]>>(
         &self,
         data: impl AsRef<[T]>,
         mut code: impl AsMut<[U]>,
