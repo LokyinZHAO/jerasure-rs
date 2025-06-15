@@ -644,6 +644,7 @@ impl ErasureCode {
         use iter_tools::prelude::*;
         let erased: Result<Vec<_>, Error> = erased
             .iter()
+            .sorted()
             .dedup()
             .map(|&i| {
                 if 0 <= i && i < self.k + self.m {
