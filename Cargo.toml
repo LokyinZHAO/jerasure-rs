@@ -20,7 +20,7 @@ exclude = [
 
 
 [dependencies]
-iter_tools = "0.29.0"
+iter_tools = "0.36.0"
 jerasure-sys = "1.0.2"
 thiserror = "2.0.12"
 
