@@ -150,7 +150,7 @@ impl GaloisField {
                 src.len()
             )));
         }
-        if n % MACHINE_LONG_SIZE != 0 {
+        if !n.is_multiple_of(MACHINE_LONG_SIZE) {
             return Err(Error::NotAligned(n));
         }
         unsafe {
