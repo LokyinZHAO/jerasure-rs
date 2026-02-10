@@ -25,4 +25,4 @@ jerasure-sys = "1.0.2"
 thiserror = "2.0.12"
 
 [dev-dependencies]
-rand = "0.9.1"
+rand = "0.10.0"
